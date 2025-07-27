@@ -45,12 +45,12 @@ class Backend:
   def get_current_song(self):
     return self.song_names[-1]
 
-  def download_songs(self, download_dir, event: threading.Event=None):
+  def download_songs(self, download_dir: str, event: threading.Event=None):
     self.song_names = []
     chrome_options = Options()
 
     prefs = {
-      "download.default_directory": download_dir,
+      "download.default_directory": download_dir.replace("/", "\\"),
       "download.prompt_for_download": False,
       "download.directory_upgrade": True,
       "safebrowsing.enabled": True
@@ -76,15 +76,15 @@ class Backend:
           submit_button = driver.find_element(By.XPATH, "//button[2]")
           submit_button.click()
 
+          download_button = None
           while True:
             sleep(5)
             try:
               download_button = driver.find_element(By.XPATH, "//button[1]")
             except:
               continue
-            finally:
-              download_button.click()
-              break
+            break
+          download_button.click()
               
 
           div_song_title = driver.find_element(By.XPATH, "//form[1]/div[1]")
@@ -103,8 +103,8 @@ class Backend:
           driver.get("https://ytmp3.as/cyPH/")
     finally:
       print("Finishing all downloads...")
+      sleep(5)
       event.set()
-      sleep(10)
       driver.quit()
       print("Time elapsed: " + str(time() - before) + " second(s)")
       print(col.green("All songs downloaded! Go to " + download_dir + " to listen to the songs!"))

@@ -1,6 +1,8 @@
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
 
+from backend import Backend
 """
 1. Press Proceed or Exit
 2a. Upload HTML
@@ -12,6 +14,9 @@ from tkinter import ttk, filedialog
 
 class Frontend:
   cur_window: tk.Tk = None
+  backend: Backend = None
+  event = threading.Event()
+  download_path = ""
 
   def on_start_button_click(self):
     self.cur_window.destroy()
@@ -23,11 +28,9 @@ class Frontend:
 
   def on_html_select_button_click(self):
     filepath_html = filedialog.askopenfilename(initialdir="/", title="Select YT Mix - HTML Page", filetypes=(("HTML files", "*.html"), ("All files", "*.*")))
-    download_path = filedialog.askdirectory(initialdir="/", title="Select Song Download Folder Location")
-    if filepath_html and download_path:
-      """
-      Here scan for all links to get total songs
-      """
+    self.download_path = filedialog.askdirectory(initialdir="/", title="Select Song Download Folder Location")
+    if filepath_html and self.download_path:
+      self.backend = Backend(filepath_html)
       self.cur_window.destroy()
       self.create_download_window()
 
@@ -35,10 +38,18 @@ class Frontend:
     self.cur_window.destroy()
     self.create_progressbar_window()
 
-  def update_progress_bar(self, progressbar):
+  def update_download_progress(self, label: tk.Label, progressbar: ttk.Progressbar):
     """
     Here update the progressbar, perhaps use a caller-listener architecture
     """
+    total_songs = self.backend.get_total_songs()
+    for i in range(total_songs):
+      self.event.wait()
+      song_name = self.backend.get_current_song()
+      label.config(text="Installing " + song_name + "...")
+      progressbar["value"] += 1/total_songs*100
+    
+    self.event.wait()
     self.cur_window.destroy()
     self.create_finish_window()
 
@@ -75,19 +86,25 @@ class Frontend:
   def create_download_window(self):
     self.cur_window = tk.Tk()
     self.cur_window.title("Ready to Download")
-    total_songs = 0
+    total_songs = self.backend.get_total_songs()
     song_information_label = tk.Label(self.cur_window, text="Total Songs: " + str(total_songs))
     download_button = tk.Button(self.cur_window, text="Begin download", command=self.on_download_button_click)
     song_information_label.pack()
-    download_button.pack(())
+    download_button.pack()
     self.cur_window.mainloop()
 
   #4
   def create_progressbar_window(self):
     self.cur_window = tk.Tk()
     self.cur_window.title("Downloading...")
-    progressbar = ttk.Progressbar(orient=tk.VERTICAL, length=100)
-    self.update_progress_bar(progressbar)
+    song_name_label = tk.Label(self.cur_window, text="Grabbing song titles...")
+    progressbar = ttk.Progressbar(self.cur_window, orient=tk.HORIZONTAL, length=300, mode="determinate")
+    song_name_label.pack()
+    progressbar.pack()
+    t1 = threading.Thread(target=lambda: self.update_download_progress(song_name_label, progressbar))
+    t2 = threading.Thread(target=lambda: self.backend.download_songs(self.download_path, self.event))
+    t1.start()
+    t2.start()
     self.cur_window.mainloop()
 
   #5
