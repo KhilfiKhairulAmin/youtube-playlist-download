@@ -23,8 +23,8 @@ class Frontend:
 
   def on_html_select_button_click(self):
     filepath_html = filedialog.askopenfilename(initialdir="/", title="Select YT Mix - HTML Page", filetypes=(("HTML files", "*.html"), ("All files", "*.*")))
-
-    if filepath_html:
+    download_path = filedialog.askdirectory(initialdir="/", title="Select Song Download Folder Location")
+    if filepath_html and download_path:
       """
       Here scan for all links to get total songs
       """
