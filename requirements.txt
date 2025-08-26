@@ -1,2 +1,3 @@
 selenium
+typer
 beautifulsoup4

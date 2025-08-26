@@ -1,4 +1,5 @@
-venv
+.venv
 __pycache__
 .python-version
 playground
+downloads
