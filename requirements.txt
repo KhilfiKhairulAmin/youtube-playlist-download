@@ -1,3 +1,4 @@
 selenium
 typer
 beautifulsoup4
+python-dotenv
