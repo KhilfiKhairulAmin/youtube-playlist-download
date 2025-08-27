@@ -8,12 +8,13 @@ from selenium.common.exceptions import TimeoutException
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
+from yt_event import *
 import os
+import threading
 
 load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV")
-
 
 def parse_ytlink_from_html(path_to_html: Path) -> List[str]:
   """Parse playlist links from YouTube's HTML file"""
@@ -40,7 +41,7 @@ def parse_ytlink_from_html(path_to_html: Path) -> List[str]:
 
 def download_ytlink(ytlinks: List[str], download_dir: Path, format: int):
   """Download the songs from YouTube playlist links"""
-
+  
   # Setup Web Driver
   chrome_options = Options()
 
@@ -54,6 +55,9 @@ def download_ytlink(ytlinks: List[str], download_dir: Path, format: int):
   chrome_options.add_experimental_option("prefs", prefs)
   chrome_options.add_argument("--disable-logging")
   chrome_options.add_argument("--log-level=3")
+  print(APP_ENV)
+  if APP_ENV != "debug":
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # disable logging completely from selenium
   if APP_ENV != "debug":
     chrome_options.add_argument("--headless") 
 
@@ -62,6 +66,9 @@ def download_ytlink(ytlinks: List[str], download_dir: Path, format: int):
 
   # Open YTMP3 website
   driver.get("https://ytmp3.as/cyPH/")
+
+  # Signal 1st event has started
+  signal_event()
 
   # Iterate through all links
   for link in ytlinks:
@@ -84,16 +91,14 @@ def download_ytlink(ytlinks: List[str], download_dir: Path, format: int):
     div_song_title = driver.find_element(By.XPATH, "//form[1]/div[1]")
     song_title = div_song_title.text
 
-    # self.song_names.append(song_title)
-    # event.set()
-    # event.clear()
-    # cur_num_text = "(" + str(j) + "/" + str(self.get_total_songs()) + ")"
-    # print(cur_num_text + " Downloading " + col.yellow(song_title) + " ...")
+    signal_event()  # Signal event song download progress +1
 
     WebDriverWait(driver, 1)
 
     driver.get("https://ytmp3.as/cyPH/")
 
+
+register_function(download_ytlink)
 
 if __name__ == "__main__":
   print("Run the application by executing `pthon app.py` in the terminal")
