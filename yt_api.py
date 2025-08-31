@@ -1,3 +1,4 @@
+import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -96,9 +97,6 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
   # Browser driver initialization
   driver = webdriver.Chrome(options=chrome_options)
 
-  # Open YTMP3 website
-  driver.get("https://ytmp3.as/cyPH/")
-
   # Clear log message produced by selenium
   print("\u001b[1A")
   print("\u001b[K")
@@ -108,6 +106,13 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
 
   # Iterate through all links
   for item in playlist_items:
+
+    # Await 1 second to ensure button has been pressed
+    WebDriverWait(driver, 1)
+
+    # Open YTMP3 website
+    driver.get("https://ytmp3.as/cyPH/")
+
     link_input_box = driver.find_element(By.ID, "v")
     link_input_box.send_keys(item["link"])
 
@@ -124,16 +129,14 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
 
     download_button.click()
 
-    div_song_title = driver.find_element(By.XPATH, "//form[1]/div[1]")
-
     signal_event()  # Signal event song download progress +1
 
-    WebDriverWait(driver, 1)
+  # TODO find a more robust way to handle this problem
+  
+  time.sleep(10)  # Temporary fix, add longer time to finish download to ensure all downloads have enough time to finish
+                  # However, problematic, since the download is controlled by the browser, if it's longer than 10 sec, essentially the file will not complete download
 
-    driver.get("https://ytmp3.as/cyPH/")
-
-  WebDriverWait(driver, 5)
-
+  signal_event()  # Signal finishing all downloads
 
 register_function(download_ytlink)
 

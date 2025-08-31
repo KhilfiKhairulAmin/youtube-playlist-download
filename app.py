@@ -26,9 +26,13 @@ def progress_ui():
     for item in playlist_items:
       await_event_set()
       progress.update(task, advance=1, description=f"Now: [yellow]{item["title"]}")
-    progress.update(task, description="[green]Complete")
+    progress.update(task, description="Finishing downloads...")
 
+    await_event_set()
 
+    progress.update(task, description="[green]Complete!")
+
+  
 @app.command()
 def download(
   path_to_html: Path = typer.Argument(
