@@ -67,7 +67,6 @@ def parse_ytlink_from_html(path_to_html: Path) -> List[dict]:
 def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int):
   """Download the songs from YouTube playlist links"""
 
-
   # Setup Web Driver
   chrome_options = Options()
 
@@ -113,6 +112,12 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
     # Open YTMP3 website
     driver.get("https://ytmp3.as/cyPH/")
 
+    driver.execute_script("""
+      window.download = function (e, t, r, n) {
+        window._downloadLink = e;
+      };
+      """)
+
     link_input_box = driver.find_element(By.ID, "v")
     link_input_box.send_keys(item["link"])
 
@@ -121,18 +126,17 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
 
     download_button = None
 
-    while True:
-      download_button = WebDriverWait(driver, 5).until(
-        EC.presence_of_element_located((By.XPATH, "//button[1]"))
-      )
-      break
+    while not driver.execute_script("return window._downloadLink"):
+      time.sleep(0.5)
 
-    download_button.click()
+    print("\n", driver.execute_script("return window._downloadLink"))
+
+    exit()
 
     signal_event()  # Signal event song download progress +1
 
   # TODO find a more robust way to handle this problem
-  
+
   time.sleep(10)  # Temporary fix, add longer time to finish download to ensure all downloads have enough time to finish
                   # However, problematic, since the download is controlled by the browser, if it's longer than 10 sec, essentially the file will not complete download
 
