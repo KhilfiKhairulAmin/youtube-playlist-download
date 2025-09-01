@@ -4,16 +4,12 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.remote.remote_connection import LOGGER
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
 from yt_event import *
 import os
-import logging
+import requests
 
 load_dotenv()
 
@@ -64,26 +60,24 @@ def parse_ytlink_from_html(path_to_html: Path) -> List[dict]:
   return playlist_items
 
 
-def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int):
-  """Download the songs from YouTube playlist links"""
-
+def initialize_web_driver(download_dir: Path):
   # Setup Web Driver
   chrome_options = Options()
 
-  # Suppress selenium logging
-  logging.getLogger('selenium').setLevel(logging.WARNING)
-  logging.getLogger('urllib3').setLevel(logging.WARNING)
+  # # Suppress selenium logging
+  # logging.getLogger('selenium').setLevel(logging.WARNING)
+  # logging.getLogger('urllib3').setLevel(logging.WARNING)
 
-  # Browser setup
-  prefs = {
-    "download.default_directory": str(download_dir),
-    "download.prompt_for_download": False,
-    "download.directory_upgrade": True,
-    "safebrowsing.enabled": True,
-    'excludeSwitches': ['enable-logging']  # disable logging completely from selenium
-  }
+  # Browser configuration
+  # prefs = {
+  #   "download.default_directory": str(download_dir),
+  #   "download.prompt_for_download": False,
+  #   "download.directory_upgrade": True,
+  #   "safebrowsing.enabled": True,
+  #   'excludeSwitches': ['enable-logging']  # disable logging completely from selenium
+  # }
 
-  chrome_options.add_experimental_option("prefs", prefs)
+  # chrome_options.add_experimental_option("prefs", prefs)
   chrome_options.add_argument("--disable-logging")
   chrome_options.add_argument("--log-level=3")
   chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
@@ -92,13 +86,17 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
   if APP_ENV != "debug":
     chrome_options.add_argument("--headless") 
     
-
   # Browser driver initialization
-  driver = webdriver.Chrome(options=chrome_options)
+  return webdriver.Chrome(options=chrome_options)
 
-  # Clear log message produced by selenium
-  print("\u001b[1A")
-  print("\u001b[K")
+
+def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int):
+  """Download the songs from YouTube playlist links"""
+
+  # TODO refactor into each functionality
+  download_dir.mkdir(parents=True, exist_ok=True)
+
+  driver = initialize_web_driver(download_dir)
 
   # Signal progress bar that download process is preparing to download
   signal_event()
@@ -112,33 +110,51 @@ def download_ytlink(playlist_items: List[dict], download_dir: Path, format: int)
     # Open YTMP3 website
     driver.get("https://ytmp3.as/cyPH/")
 
+    # Override download method inside the JS script to get the download link in Python
     driver.execute_script("""
       window.download = function (e, t, r, n) {
         window._downloadLink = e;
       };
-      """)
+    """)
 
+    # Enter YT link in the input element
     link_input_box = driver.find_element(By.ID, "v")
     link_input_box.send_keys(item["link"])
 
+    # Press the submit button
     submit_button = driver.find_element(By.XPATH, "//button[2]")
     submit_button.click()
 
-    download_button = None
-
+    # Wait until the download link has been created
     while not driver.execute_script("return window._downloadLink"):
-      time.sleep(0.5)
+      pass
 
-    print("\n", driver.execute_script("return window._downloadLink"))
+    # Grab the download link
+    download_link = driver.execute_script("return window._downloadLink")
 
-    exit()
+    # Mimic browser behavior
+    headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'identity',  # Important for progress tracking
+      'Connection': 'keep-alive',
+    }
+
+    response = requests.get(download_link, headers=headers, stream=True)
+    response.raise_for_status()
+
+    total_size = int(response.headers.get('content-length', 0))
+    block_size = 1024  # 1 Kibibyte
+
+    print(f"File size: {total_size / (1024*1024):.2f} MB")
+
+    download_path = os.path.join(download_dir, f"{item["title"]}.mp3")
+
+    with open(download_path, 'wb') as file:
+      for data in response.iter_content(block_size):
+        file.write(data)
 
     signal_event()  # Signal event song download progress +1
-
-  # TODO find a more robust way to handle this problem
-
-  time.sleep(10)  # Temporary fix, add longer time to finish download to ensure all downloads have enough time to finish
-                  # However, problematic, since the download is controlled by the browser, if it's longer than 10 sec, essentially the file will not complete download
 
   signal_event()  # Signal finishing all downloads
 

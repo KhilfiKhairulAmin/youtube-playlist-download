@@ -63,9 +63,6 @@ def download(
   )
 ):
   """Download YouTube playlist items in MP3 or MP4"""
-  
-  # Create folders at path if it doesn't exist
-  download_dir.mkdir(parents=True, exist_ok=True)
 
   # Make progress bar on standby for listening to download progress
   start_function(progress_ui)
