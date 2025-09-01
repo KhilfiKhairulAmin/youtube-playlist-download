@@ -28,3 +28,6 @@ python app.py "path_to_html"
   - TODO: Implement handler for single video
 3. A download analytics feature where user can view their past downloads activity and then show them where the file is downloaded, when, etc. It's just like a data browser feature, but through CLI
   - I'm not sure about this yet since it seems to be a big feature overall
+
+### Motivation
+I know there are other tools like `ytdl` out there that are more mature and feature-ful than this app. But, I will document the whole journey, I will even make a documentation and landing page for this app, because from my perspective, this is my identity afterall, I started building this and I will make it finished and usable by people, despite there being other alternative. I believe that the benefit of this app is simplicity and low learning curve as compared to the huge amount of ytdl configuration. Starting out with my app is less error-prone, and can get your job done without technical roadblock and configuration.
