@@ -21,6 +21,13 @@ from rich.progress import Progress
 # Avoiding errors, optimization, refactoring, documenting
 # README documenting
 # Future: Proper website documentation using GitHub pages, then finished! 
+# https://regex101.com/r/Wbynx0/1
+# https://regex101.com/r/vEJAHv/1
+"""Today (3 Sep 25)
+I've done more research than coding my program.
+However, the coding has been very effective, I've removed (simplified) most of my codes, which reduce the size and complexity of this program, making it easier to sustain and more readable
+Next, I've tested a lot of stuff regarding youtube's html, and found all the solutions for each cases involving html download from browser for private playlist and mix. I also may find faster method to download a public playlist such that makes it more efficient 
+"""
 
 
 """PART A: FUNCTIONS OTHER THAN TYPER CLI"""
@@ -82,7 +89,7 @@ def get_playlist_videos(playlist_link: str):
   for a in anchors:
     if "/watch?v=" in a.get("href"):
       links.append(f"https://youtube.com{a.get("href")}")
-      
+
   return links
 
 
