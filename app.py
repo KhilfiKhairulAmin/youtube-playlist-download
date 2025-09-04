@@ -242,7 +242,7 @@ def download_mix(
     help="Directory to download the playlist"
   ),
   format: str = typer.Option(
-    0,
+    "mp3",
     "--format",
     "-f",
     formats=["mp3", "mp4"],
