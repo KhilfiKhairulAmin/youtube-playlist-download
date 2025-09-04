@@ -3,15 +3,12 @@ from bs4 import BeautifulSoup
 from rich.progress import Progress
 from pathlib import Path
 from datetime import datetime
-import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from pathlib import Path
 from typing import List, Literal
-from dotenv import load_dotenv
 import os
 import requests
 from rich.progress import Progress
@@ -40,8 +37,7 @@ Next, I've tested a lot of stuff regarding youtube's html, and found all the sol
 """PART A: FUNCTIONS OTHER THAN TYPER CLI"""
 
 
-load_dotenv()
-APP_ENV = os.getenv("APP_ENV")
+APP_ENV = "debug"
 
 
 def initialize_web_driver():

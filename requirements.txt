@@ -1,7 +1,6 @@
 selenium
 typer
 beautifulsoup4
-python-dotenv
 requests
 pytest
 pytest-cov
