@@ -16,6 +16,13 @@ import os
 import requests
 from rich.progress import Progress
 
+"""
+GOALS
+1. Make a CLI tool for downloading YouTube videos, playlists and mix
+2. Make it works well and highly stable (error-free) (Do a lot of tests! Note for error (breaking) points!)
+3. Make a good code with informative comments and easy to understand codes for my TikTok viewers
+4. Make a video about this app as my infienite DevVlog...
+"""
 
 # Problem: The requests to Youtube doesn't get the correct HTML, therefore I will implement using selenium instead
 # Avoiding errors, optimization, refactoring, documenting
@@ -53,14 +60,9 @@ def initialize_web_driver():
 def parse_playlist_videos(html_content: str):
 
   soup = BeautifulSoup(html_content, "html.parser")
-
+  # TODO Use only one browser instantiation to speed up process
   # Find the parent div containing all playlist links
   div = soup.find("div", { "id": "items", "class": "playlist-items style-scope ytd-playlist-panel-renderer"})
-  a = soup.find_all("a")
-  for b in a:
-    if "/watch?v=4a8XOwRzJC4" in str(b):
-      typer.echo(b)
-  exit()
   raw_links = div.find_all("a")
 
   # Remove duplicates or unrelated links from the raw links
@@ -80,12 +82,13 @@ def get_playlist_videos(playlist_link: str):
   # Open playlist link HTML
   driver = initialize_web_driver()
   driver.get(playlist_link)
-
+  # TODO Browser (or YouTube) didn't load well causing no links to be found 
   bs = BeautifulSoup(driver.page_source, "html.parser")
 
   # Find the parent div containing all playlist links
   anchors = bs.find_all("a", { "class": "yt-simple-endpoint style-scope ytd-playlist-video-renderer" })
   links = []
+  
   for a in anchors:
     if "/watch?v=" in a.get("href"):
       links.append(f"https://youtube.com{a.get("href")}")
@@ -216,7 +219,7 @@ def download(
     # Playlist link
     links = get_playlist_videos(link)
     handle_playlist_download(links, format, download_dir, silent)
-
+# TODO Error regarding fs naming when song names contain illegal characters for Windows filesystem
 
 @app.command()
 def download_mix(
