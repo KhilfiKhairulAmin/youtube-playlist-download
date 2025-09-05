@@ -1,3 +1,4 @@
+import time
 import typer
 from bs4 import BeautifulSoup
 from rich.progress import Progress
@@ -12,6 +13,8 @@ from typing import List, Literal
 import os
 import requests
 from rich.progress import Progress
+import datetime
+from typer.testing import CliRunner
 
 """
 GOALS
@@ -33,29 +36,60 @@ However, the coding has been very effective, I've removed (simplified) most of m
 Next, I've tested a lot of stuff regarding youtube's html, and found all the solutions for each cases involving html download from browser for private playlist and mix. I also may find faster method to download a public playlist such that makes it more efficient 
 """
 
+# TODO Error regarding fs naming when song names contain illegal characters for Windows filesystem
+# TODO Browser (or YouTube) didn't load well causing no links to be found 
 
 """PART A: FUNCTIONS OTHER THAN TYPER CLI"""
 
 
 APP_ENV = "debug"
+DOWNLOAD_DIR = "saved"
 
 
-def initialize_web_driver():
-  """Create and return Chrome web driver"""
+def parse_video_id_from_link(link):
+  """Parse video ID from link"""
+  return link.split("=")[1][:12]
+
+
+def parse_video_ids_from_playlist(playlist_link: str):
+  """Parse all videos data from playlist"""
 
   # Configure web driver to ensure smooth process
   chrome_options = Options()
+
+  if APP_ENV != "debug":
+    chrome_options.add_argument("--headless")
+
+  chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
   chrome_options.add_argument("--disable-logging")
   chrome_options.add_argument("--log-level=3")
-  if APP_ENV != "debug":
-    chrome_options.add_argument("--headless") 
   
-  return webdriver.Chrome(options=chrome_options)
+  driver = webdriver.Chrome(options=chrome_options)
+
+  driver.get(playlist_link)
+  time.sleep(1)
+  
+  bs = BeautifulSoup(driver.page_source, "html.parser")
+
+  # Find the parent div containing all playlist links
+  anchors = bs.find_all("a", { "class": "yt-simple-endpoint style-scope ytd-playlist-video-renderer" })
+  video_ids = []
+  
+  for a in anchors:
+    if "/watch?v=" in a.get("href"):
+      video_ids.append(parse_video_id_from_link(a.get("href")))
+
+  return video_ids
 
 
-def parse_playlist_videos(html_content: str):
+def parse_video_ids_from_html(path_to_playlist_html: Path):
+  """Parse YouTube's playlist HTML file and return `titles`, `channels` & `links` from the playlist"""
+  
+  # Read HTML file
+  with open(path_to_playlist_html, "r", encoding="utf-8") as f:
+    content = f.read()
 
-  soup = BeautifulSoup(html_content, "html.parser")
+  soup = BeautifulSoup(content, "html.parser")
   # TODO Use only one browser instantiation to speed up process
   # Find the parent div containing all playlist links
   div = soup.find("div", { "id": "items", "class": "playlist-items style-scope ytd-playlist-panel-renderer"})
@@ -65,130 +99,138 @@ def parse_playlist_videos(html_content: str):
   links = []
   for l in raw_links:
     if l.get("href", "") != "" and l["href"].find("https://www.youtube.com/watch?v=") != -1:
-      parse_l = l["href"].split("&")[0]  # Grab only https://www.youtube.com/watch?v=some_id without any extra parameters
+      parse_l = parse_video_id_from_link(l["href"])  # Grab only video id
       if not (parse_l in links):
         links.append(parse_l)  
 
   return links
 
 
-def get_playlist_videos(playlist_link: str):
-  """Parse all videos data from playlist"""
-
-  # Open playlist link HTML
-  driver = initialize_web_driver()
-  driver.get(playlist_link)
-  # TODO Browser (or YouTube) didn't load well causing no links to be found 
-  bs = BeautifulSoup(driver.page_source, "html.parser")
-
-  # Find the parent div containing all playlist links
-  anchors = bs.find_all("a", { "class": "yt-simple-endpoint style-scope ytd-playlist-video-renderer" })
-  links = []
+def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], download_dir: Path, is_silent: bool=False):
+  """Download all videos from playlist in MP3/MP4 format with progress bar"""
   
-  for a in anchors:
-    if "/watch?v=" in a.get("href"):
-      links.append(f"https://youtube.com{a.get("href")}")
-
-  return links
-
-
-def get_playlist_videos_from_html(path_to_playlist_html: Path):
-  """Parse YouTube's playlist HTML file and return `titles`, `channels` & `links` from the playlist"""
-  
-  # Read HTML file
-  with open(path_to_playlist_html, "r", encoding="utf-8") as f:
-    content = f.read()
-
-  return parse_playlist_videos(content)
-
-
-def handle_video_download(link: str, format: Literal["mp3", "mp4"], download_dir: Path, is_silent: bool=False):
-  """Download single video in MP3/MP4 format"""
-
   # Create directory if it doesn't exist
   download_dir.mkdir(parents=True, exist_ok=True)
 
-  driver = initialize_web_driver()
+  # Configure web driver to ensure smooth process
+  chrome_options = Options()
+  chrome_options.add_argument("--disable-logging")
+  chrome_options.add_argument("--log-level=3")
+  if APP_ENV != "debug":
+    chrome_options.add_argument("--headless")
+  chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+  
+  driver = webdriver.Chrome(options=chrome_options)
 
-  # Open YTMP3 website
-  driver.get("https://ytmp3.as/cyPH/")
+  for video_id in video_ids:
 
-  # Override download method inside the JS script to get the download link in Python
-  driver.execute_script("""
-    window.download = function (e, t, r, n) {
-      window._downloadLink = e;
-      window._title = n;
-    };
-  """)
+    # Open YTMP3 website
+    driver.get("https://ytmp3.as/cyPH/")
 
-  # Enter YT link in the input element
-  link_input_box = driver.find_element(By.ID, "v")
-  link_input_box.send_keys(link)
+    is_mp3 = format.lower() == "mp3"
 
-  # Press the submit button
-  submit_button = driver.find_element(By.XPATH, "//button[2]")
-  submit_button.click()
+    if is_mp3:
+      # Override download method inside the JS script to get the download link in Python
+      driver.execute_script("""
+        window.download = function (e, t, r, n) {
+          window._downloadLink = e;
+          window._title = n;
+        };
+      """)
+    else:
+      driver.execute_script("""
+        window.download = function (e, t, r, n) {
+          window._downloadLink = e;
+        };
+      """)
 
-  # Wait until the download link has been created
-  while not driver.execute_script("return window._title"):
-    pass
+    # Enter YT link in the input element
+    link_input_box = driver.find_element(By.ID, "v")
+    link_input_box.send_keys(f"https://youtube.com/watch?v={video_id}")
 
-  # Grab the download link
-  download_link = driver.execute_script("return window._downloadLink")
-  title = driver.execute_script("return window._title")
+    # Press the submit button
+    format_button = driver.find_element(By.XPATH, "//button[1]")  # Default: MP3
 
-  # Mimic browser behavior
-  headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': '*/*',
-    'Accept-Encoding': 'identity',  # Important for progress tracking
-    'Connection': 'keep-alive',
-  }
+    if not is_mp3:
+      format_button.click()  # Change to MP4 by clicking
 
-  response = requests.get(download_link, headers=headers, stream=True)
-  response.raise_for_status()
+    # Press the convert button
+    convert_button = driver.find_element(By.XPATH, "//button[2]")
+    convert_button.click()
 
-  total_size = int(response.headers.get('content-length', 0))
-  block_size = 1024  # 1 Kibibyte
-  file_size = total_size / (1024*1024)
+    # Wait until the download link has been created
+    while not driver.execute_script("return window._downloadLink"):
+      pass
 
-  download_path = os.path.join(download_dir, f"{title}.{format}")
+    # Grab the download link
+    download_link = driver.execute_script("return window._downloadLink")
 
-  with open(download_path, 'wb') as file, Progress(disable=is_silent) as progressbar:
-    task = progressbar.add_task(description=f'Downloading [yellow]{title} [white]({file_size:.2f}MB)', total=total_size, visible=not is_silent)
-    for data in response.iter_content(block_size):
-      progressbar.update(task, advance=len(data))
-      file.write(data)
+    title = ""
+    if is_mp3:
+      title = driver.execute_script("return window._title")
+    else:
+      title = driver.find_element(By.XPATH, "//form/div[1]").text
+
+    # Mimic browser behavior
+    headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'identity',  # Important for progress tracking
+      'Connection': 'keep-alive',
+    }
+
+    response = requests.get(download_link, headers=headers, stream=True)
+    response.raise_for_status()
+
+    total_size = int(response.headers.get('content-length', 0))
+    block_size = 1024  # 1 Kibibyte
+    file_size = total_size / (1024*1024)
+
+    download_path = os.path.join(download_dir, f"{title}.{format}")
+
+    with open(download_path, 'wb') as file, Progress(disable=is_silent) as progressbar:
+      task = progressbar.add_task(description=f'Downloading [yellow]{title} [white]({file_size:.2f}MB)', total=total_size, visible=not is_silent)
+      for data in response.iter_content(block_size):
+        progressbar.update(task, advance=len(data))
+        file.write(data)
 
 
-def handle_playlist_download(links: List[str], format: Literal["mp3", "mp4"], download_dir: Path, is_silent: bool=False):
-  """Download all videos from playlist in MP3/MP4 format with progress bar"""
+def count_folder_today() -> int:
+  """Count the number of folders created today inside `saved` directory"""
 
-  for link in links:
-    handle_video_download(link, format, download_dir, is_silent)
+  if not os.path.exists(DOWNLOAD_DIR):
+    return 0
+  
+  folder_count = 0
+  with os.scandir(DOWNLOAD_DIR) as entries:
+    for entry in entries:
+      if str(datetime.date.today()) in entry.name:
+        folder_count += 1
+  
+  return folder_count
 
 
 """PART B: TYPER CLI"""
 
 
 app = typer.Typer(help='A simple YouTube playlist downloader. Download songs and videos with ease through command-line interface.')
-DEFAULT_DOWNLOAD_PATH = Path(f"saved/{str(datetime.today().now()).replace(":", "_")}")
+DEFAULT_DOWNLOAD_DIR = Path(f"{DOWNLOAD_DIR}/{datetime.date.today()} #{str(count_folder_today())}")
 
 
 @app.command()
 def download(
-  link: str = typer.Argument(
+  link_or_path: str = typer.Argument(
     ...,
-    help="Link to video/playlist"
+    help="Link to video/playlist OR path to saved HTML"
   ),
-  download_dir: Path = typer.Argument(
-    DEFAULT_DOWNLOAD_PATH,
+  download_location: Path = typer.Argument(
+    DEFAULT_DOWNLOAD_DIR,
     exists=False,
     file_okay=False,
     dir_okay=True,
     writable=True,
     resolve_path=True,
-    help="Directory to download the playlist"
+    help="Directory to save the file"
   ),
   format: str = typer.Option(
     "mp3",
@@ -198,7 +240,7 @@ def download(
     show_choices=True,
     help="Format of the video"
   ),
-  silent: bool = typer.Option(
+  is_silent: bool = typer.Option(
     False,
     "--silent",
     "-s",
@@ -207,60 +249,30 @@ def download(
 ):
   """Download video/playlist in MP3/MP4 format"""
 
-  # Differentiate between video and playlist link
-  if not ("playlist" in link):
-    # Video link
-    handle_video_download(link, format, download_dir, silent)
+  # Determine whether input is a link or HTML
+
+  video_ids = []
+
+  if ".html" in link_or_path:
+
+    # Is HTML
+    video_ids = parse_video_ids_from_html(link_or_path)
+
+  elif "v=" in link_or_path:
+
+    video_ids.append(parse_video_id_from_link(link_or_path))
+
+  elif "list=" in link_or_path:
+    
+    video_ids = parse_video_ids_from_playlist(link_or_path)
+    
+  if len(video_ids) == 0:
+
+    typer.echo("Invalid link or path")
+
   else:
-    # Playlist link
-    links = get_playlist_videos(link)
-    handle_playlist_download(links, format, download_dir, silent)
-# TODO Error regarding fs naming when song names contain illegal characters for Windows filesystem
 
-@app.command()
-def download_mix(
-  path_to_html: Path = typer.Argument(
-    ...,
-    exists=True,
-    file_okay=True,
-    dir_okay=False,
-    readable=True,
-    resolve_path=True,
-    help="Source HTML file (download from YouTube mix page)"
-  ),
-  download_dir: Path = typer.Argument(
-    DEFAULT_DOWNLOAD_PATH,
-    exists=False,
-    file_okay=False,
-    dir_okay=True,
-    writable=True,
-    resolve_path=True,
-    help="Directory to download the playlist"
-  ),
-  format: str = typer.Option(
-    "mp3",
-    "--format",
-    "-f",
-    formats=["mp3", "mp4"],
-    help='Format of the downloads'
-  )
-):
-  """Download your mix in MP3/MP4 format
-
-  PLEASE READ THIS!
-
-  - Mix are personal playlists unique to you created by YouTube
-
-  - To download mix, open your mix page on browser & save the page as HTML file (see Step below)
-
-  - Step: Right-click on the page > 'Save as' > Save as type "Webpage, Complete"
-
-  - Copy the path of the downloaded HTML file and re-run this command with it  
-  """
-  links = get_playlist_videos_from_html(path_to_html)
-
-  # Start download process
-  handle_playlist_download(links, format, download_dir)
+    download_videos(video_ids, format, download_location, is_silent)
 
 
 if __name__ == "__main__":
