@@ -15,6 +15,8 @@ import requests
 from rich.progress import Progress
 import datetime
 from typer.testing import CliRunner
+import re
+from rich import print
 
 """
 GOALS
@@ -36,7 +38,6 @@ However, the coding has been very effective, I've removed (simplified) most of m
 Next, I've tested a lot of stuff regarding youtube's html, and found all the solutions for each cases involving html download from browser for private playlist and mix. I also may find faster method to download a public playlist such that makes it more efficient 
 """
 
-# TODO Error regarding fs naming when song names contain illegal characters for Windows filesystem
 # TODO Browser (or YouTube) didn't load well causing no links to be found 
 
 """PART A: FUNCTIONS OTHER THAN TYPER CLI"""
@@ -44,6 +45,11 @@ Next, I've tested a lot of stuff regarding youtube's html, and found all the sol
 
 APP_ENV = "debug"
 DOWNLOAD_DIR = "saved"
+
+
+def cure_filename(filename: str) -> str:
+  """Replace all illegal characters inside filename with legal characters"""
+  return re.sub(r'[/\\*?"<>|:]', "_", filename.strip())
 
 
 def parse_video_id_from_link(link):
@@ -67,7 +73,7 @@ def parse_video_ids_from_playlist(playlist_link: str):
   driver = webdriver.Chrome(options=chrome_options)
 
   driver.get(playlist_link)
-  time.sleep(1)
+  time.sleep(1)  # Ensure YouTube has loaded properly
   
   bs = BeautifulSoup(driver.page_source, "html.parser")
 
@@ -121,6 +127,8 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
   chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
   
   driver = webdriver.Chrome(options=chrome_options)
+
+  illegal_char_replacement_flag = False
 
   for video_id in video_ids:
 
@@ -186,7 +194,13 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
     block_size = 1024  # 1 Kibibyte
     file_size = total_size / (1024*1024)
 
-    download_path = os.path.join(download_dir, f"{title}.{format}")
+    filename = cure_filename(title)
+
+    if (not illegal_char_replacement_flag) and (filename != title.strip()):
+      illegal_char_replacement_flag = True
+      print("[chartreuse1]Note: [white]Illegal characters such as '([*?])' are replaced with '_' inside filenames")
+
+    download_path = os.path.join(download_dir, f"{filename}.{format}")
 
     with open(download_path, 'wb') as file, Progress(disable=is_silent) as progressbar:
       task = progressbar.add_task(description=f'Downloading [yellow]{title} [white]({file_size:.2f}MB)', total=total_size, visible=not is_silent)
