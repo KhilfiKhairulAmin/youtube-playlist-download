@@ -1,86 +1,67 @@
-import time
-import typer
-from bs4 import BeautifulSoup
-from rich.progress import Progress
-from pathlib import Path
-from datetime import datetime
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from pathlib import Path
-from typing import List, Literal
-import os
-import requests
-from rich.progress import Progress
-import datetime
-from typer.testing import CliRunner
-import re
-from rich import print
+# Built-in dependencies
+import os                         # Handling file operations
+import re                         # Filename curing (regex)
+import time                       # Handling sleep (await)
+from pathlib import Path          # Handling file operations
+import datetime                   # Naming folders inside `saved` directory
+from typing import List, Literal  # Type annotations
 
-"""
-GOALS
-1. Make a CLI tool for downloading YouTube videos, playlists and mix
-2. Make it works well and highly stable (error-free) (Do a lot of tests! Note for error (breaking) points!)
-3. Make a good code with informative comments and easy to understand codes for my TikTok viewers
-4. Make a video about this app as my infienite DevVlog...
-"""
-
-# Problem: The requests to Youtube doesn't get the correct HTML, therefore I will implement using selenium instead
-# Avoiding errors, optimization, refactoring, documenting
-# README documenting
-# Future: Proper website documentation using GitHub pages, then finished! 
-# https://regex101.com/r/Wbynx0/1
-# https://regex101.com/r/vEJAHv/1
-"""Today (3 Sep 25)
-I've done more research than coding my program.
-However, the coding has been very effective, I've removed (simplified) most of my codes, which reduce the size and complexity of this program, making it easier to sustain and more readable
-Next, I've tested a lot of stuff regarding youtube's html, and found all the solutions for each cases involving html download from browser for private playlist and mix. I also may find faster method to download a public playlist such that makes it more efficient 
-"""
-
-# TODO Browser (or YouTube) didn't load well causing no links to be found 
-
-"""PART A: FUNCTIONS OTHER THAN TYPER CLI"""
+# External dependencies
+import typer                                           # CLI tools
+import requests                                        # Downloading files
+from bs4 import BeautifulSoup                          # Parsing HTML
+from selenium import webdriver                         # Simulating browser (access YTMP3 website)
+from selenium.webdriver.common.by import By            
+from selenium.webdriver.chrome.options import Options  
+from rich import print                                 # Rich printing with color support
+from rich.progress import Progress                     # Progress bar
 
 
-APP_ENV = "debug"
-DOWNLOAD_DIR = "saved"
+"""PART A: BACKEND AND CLI-UI FUNCTIONS"""
 
 
-def cure_filename(filename: str) -> str:
-  """Replace all illegal characters inside filename with legal characters"""
-  return re.sub(r'[/\\*?"<>|:]', "_", filename.strip())
+DEBUG_MODE = False      # If set to True, Debug Mode will open webdriver without --headless-mode (browser will be visible)
+DOWNLOAD_DIR = "saved"  # Default folder location for video downloads
 
 
-def parse_video_id_from_link(link):
-  """Parse video ID from link"""
-  return link.split("=")[1][:12]
-
-
-def parse_video_ids_from_playlist(playlist_link: str):
-  """Parse all videos data from playlist"""
-
+def configure_web_driver() -> Options:
+  """Create standard web driver configuration for use throughout the application"""
+  
   # Configure web driver to ensure smooth process
   chrome_options = Options()
 
-  if APP_ENV != "debug":
+  if not DEBUG_MODE:
     chrome_options.add_argument("--headless")
 
   chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
   chrome_options.add_argument("--disable-logging")
   chrome_options.add_argument("--log-level=3")
-  
-  driver = webdriver.Chrome(options=chrome_options)
 
-  driver.get(playlist_link)
-  time.sleep(1)  # Ensure YouTube has loaded properly
+  return chrome_options
+
+
+def parse_video_id_from_link(link: str) -> str:
+  """Parse video ID from link"""
+
+  return link.split("=")[1][:12]
+
+
+def parse_video_ids_from_playlist(playlist_link: str) -> List[str]:
+  """Parse all video ids from playlist"""
+
+  driver = webdriver.Chrome(options=configure_web_driver())
+
+  driver.get(playlist_link)  # Get playlist page
+  time.sleep(1)              # Ensure YouTube has loaded properly
   
   bs = BeautifulSoup(driver.page_source, "html.parser")
 
-  # Find the parent div containing all playlist links
+  # Get all anchors
   anchors = bs.find_all("a", { "class": "yt-simple-endpoint style-scope ytd-playlist-video-renderer" })
-  video_ids = []
   
+  video_ids = []
+
+  # Filter anchors for only related links to playlist
   for a in anchors:
     if "/watch?v=" in a.get("href"):
       video_ids.append(parse_video_id_from_link(a.get("href")))
@@ -88,31 +69,31 @@ def parse_video_ids_from_playlist(playlist_link: str):
   return video_ids
 
 
-def parse_video_ids_from_html(path_to_playlist_html: Path):
-  """Parse YouTube's playlist HTML file and return `titles`, `channels` & `links` from the playlist"""
+def parse_video_ids_from_html(path_to_playlist_html: Path) -> List[str]:
+  """Parse all video ids from playlist in HTML file"""
   
-  # Read HTML file
+  # Get HTML content
   with open(path_to_playlist_html, "r", encoding="utf-8") as f:
     content = f.read()
 
   soup = BeautifulSoup(content, "html.parser")
-  # TODO Use only one browser instantiation to speed up process
+
   # Find the parent div containing all playlist links
   div = soup.find("div", { "id": "items", "class": "playlist-items style-scope ytd-playlist-panel-renderer"})
-  raw_links = div.find_all("a")
+  links = div.find_all("a")
 
-  # Remove duplicates or unrelated links from the raw links
-  links = []
-  for l in raw_links:
+  # Remove duplicates or unrelated links
+  video_ids = []
+  for l in links:
     if l.get("href", "") != "" and l["href"].find("https://www.youtube.com/watch?v=") != -1:
-      parse_l = parse_video_id_from_link(l["href"])  # Grab only video id
-      if not (parse_l in links):
-        links.append(parse_l)  
+      parse_l = parse_video_id_from_link(l["href"])
+      if not (parse_l in video_ids):
+        video_ids.append(parse_l)  
 
-  return links
+  return video_ids
 
 
-def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], download_dir: Path, is_silent: bool=False):
+def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], download_dir: Path, is_silent: bool=False) -> None:
   """Download all videos from playlist in MP3/MP4 format with progress bar"""
   
   # Create directory if it doesn't exist
@@ -122,15 +103,19 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
   chrome_options = Options()
   chrome_options.add_argument("--disable-logging")
   chrome_options.add_argument("--log-level=3")
-  if APP_ENV != "debug":
+  if DEBUG_MODE:
     chrome_options.add_argument("--headless")
   chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
   
   driver = webdriver.Chrome(options=chrome_options)
 
   illegal_char_replacement_flag = False
+  invalid_links = []
 
   for video_id in video_ids:
+    if len(video_id) != 11:
+      invalid_links.append(f"https://youtube.com/watch?v={video_id}")
+      continue
 
     # Open YTMP3 website
     driver.get("https://ytmp3.as/cyPH/")
@@ -168,10 +153,18 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
 
     # Wait until the download link has been created
     while not driver.execute_script("return window._downloadLink"):
-      pass
+      try:
+        if driver.find_element(By.XPATH, "//button[1]"):
+          break
+      except:
+        continue
 
     # Grab the download link
     download_link = driver.execute_script("return window._downloadLink")
+
+    if not download_link:
+      invalid_links.append(f"https://youtube.com/watch?v={video_id}")
+      continue
 
     title = ""
     if is_mp3:
@@ -194,9 +187,10 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
     block_size = 1024  # 1 Kibibyte
     file_size = total_size / (1024*1024)
 
-    filename = cure_filename(title)
+    # Cure filename by replacing illegal characters with '_'
+    filename = re.sub(r'[/\\*?"<>|:]', "_", title.strip())
 
-    if (not illegal_char_replacement_flag) and (filename != title.strip()):
+    if is_silent and (not illegal_char_replacement_flag) and (filename != title.strip()):
       illegal_char_replacement_flag = True
       print("[chartreuse1]Note: [white]Illegal characters such as '([*?])' are replaced with '_' inside filenames")
 
@@ -208,9 +202,14 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
         progressbar.update(task, advance=len(data))
         file.write(data)
 
+  # Display download summary
+  print(f"[green]{len(video_ids) - len(invalid_links)} [white]videos downloaded successfully. [bright_red]{len(invalid_links)} [white]invalid links found.")
+  print(f"\n[bright_red]Invalid links: [white]", end="")
+  print(*invalid_links, sep=", ")
 
-def count_folder_today() -> int:
-  """Count the number of folders created today inside `saved` directory"""
+
+def get_next_folder_number() -> int:
+  """Count the next number to be appended in default folder name in `saved` directory"""
 
   if not os.path.exists(DOWNLOAD_DIR):
     return 0
@@ -218,17 +217,17 @@ def count_folder_today() -> int:
   folder_count = 0
   with os.scandir(DOWNLOAD_DIR) as entries:
     for entry in entries:
-      if str(datetime.date.today()) in entry.name:
+      if str(datetime.date.today()) in entry.name:  # Only append number if the folder's date is today
         folder_count += 1
   
   return folder_count
 
 
-"""PART B: TYPER CLI"""
+"""PART B: CLI INTEGRATION FUNCTION"""
 
 
 app = typer.Typer(help='A simple YouTube playlist downloader. Download songs and videos with ease through command-line interface.')
-DEFAULT_DOWNLOAD_DIR = Path(f"{DOWNLOAD_DIR}/{datetime.date.today()} #{str(count_folder_today())}")
+DEFAULT_DOWNLOAD_DIR = Path(f"{DOWNLOAD_DIR}/{datetime.date.today()} #{str(get_next_folder_number())}")
 
 
 @app.command()
@@ -252,7 +251,7 @@ def download(
     "-f",
     case_sensitive=False,
     show_choices=True,
-    help="Format of the video"
+    help="Format of the videos"
   ),
   is_silent: bool = typer.Option(
     False,
@@ -261,33 +260,51 @@ def download(
     help="Enabling this will hide the progress bar"
   )
 ):
-  """Download video/playlist in MP3/MP4 format"""
-
-  # Determine whether input is a link or HTML
+  """This app downloads videos/playlist from YouTube in MP3 and MP4 format"""
 
   video_ids = []
 
-  if ".html" in link_or_path:
+  print("\nParsing the video links...")
 
-    # Is HTML
+  # Determine whether input is a video link, playlist link or HTML file
+  if ".html" in link_or_path:  # HTML file
     video_ids = parse_video_ids_from_html(link_or_path)
 
-  elif "v=" in link_or_path:
-
+  elif "v=" in link_or_path:  # Video link
     video_ids.append(parse_video_id_from_link(link_or_path))
 
-  elif "list=" in link_or_path:
-    
+  elif "list=" in link_or_path:  # Playlist link
     video_ids = parse_video_ids_from_playlist(link_or_path)
-    
+  
   if len(video_ids) == 0:
-
-    typer.echo("Invalid link or path")
+    print("[bright_red]Invalid link or path")
 
   else:
-
     download_videos(video_ids, format, download_location, is_silent)
 
 
 if __name__ == "__main__":
   app()
+
+
+"""
+GOALS
+1. Make a CLI tool for downloading YouTube videos, playlists and mix
+2. Make it works well and highly stable (error-free) (Do a lot of tests! Note for error (breaking) points!)
+3. Make a good code with informative comments and easy to understand codes for my TikTok viewers
+4. Make a video about this app as my infienite DevVlog...
+"""
+
+# Problem: The requests to Youtube doesn't get the correct HTML, therefore I will implement using selenium instead
+# Avoiding errors, optimization, refactoring, documenting
+# README documenting
+# Future: Proper website documentation using GitHub pages, then finished! 
+# https://regex101.com/r/Wbynx0/1
+# https://regex101.com/r/vEJAHv/1
+"""Today (3 Sep 25)
+I've done more research than coding my program.
+However, the coding has been very effective, I've removed (simplified) most of my codes, which reduce the size and complexity of this program, making it easier to sustain and more readable
+Next, I've tested a lot of stuff regarding youtube's html, and found all the solutions for each cases involving html download from browser for private playlist and mix. I also may find faster method to download a public playlist such that makes it more efficient 
+"""
+  # TODO Use only one browser instantiation to speed up process
+
