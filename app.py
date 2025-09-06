@@ -11,8 +11,8 @@ import typer                                           # CLI tools
 import requests                                        # Downloading files
 from bs4 import BeautifulSoup                          # Parsing HTML
 from selenium import webdriver                         # Simulating browser (access YTMP3 website)
-from selenium.webdriver.common.by import By            
-from selenium.webdriver.chrome.options import Options  
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from rich import print                                 # Rich printing with color support
 from rich.progress import Progress                     # Progress bar
 
@@ -24,32 +24,30 @@ DEBUG_MODE = False      # If set to True, Debug Mode will open webdriver without
 DOWNLOAD_DIR = "saved"  # Default folder location for video downloads
 
 
-def configure_web_driver() -> Options:
-  """Create standard web driver configuration for use throughout the application"""
-  
-  # Configure web driver to ensure smooth process
-  chrome_options = Options()
+def create_web_driver():
+  """Create a new configured Chrome web driver for browsing"""
+
+  # Connect to existing instance
+  options = Options()
 
   if not DEBUG_MODE:
-    chrome_options.add_argument("--headless")
+    options.add_argument("--headless")
 
-  chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
-  chrome_options.add_argument("--disable-logging")
-  chrome_options.add_argument("--log-level=3")
+  driver = webdriver.Chrome(options=options)
 
-  return chrome_options
+  return driver
 
 
 def parse_video_id_from_link(link: str) -> str:
   """Parse video ID from link"""
 
-  return link.split("=")[1][:12]
+  return link.split("=")[1].split("&")[0]
 
 
 def parse_video_ids_from_playlist(playlist_link: str) -> List[str]:
   """Parse all video ids from playlist"""
 
-  driver = webdriver.Chrome(options=configure_web_driver())
+  driver = create_web_driver()
 
   driver.get(playlist_link)  # Get playlist page
   time.sleep(1)              # Ensure YouTube has loaded properly
@@ -98,16 +96,8 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
   
   # Create directory if it doesn't exist
   download_dir.mkdir(parents=True, exist_ok=True)
-
-  # Configure web driver to ensure smooth process
-  chrome_options = Options()
-  chrome_options.add_argument("--disable-logging")
-  chrome_options.add_argument("--log-level=3")
-  if DEBUG_MODE:
-    chrome_options.add_argument("--headless")
-  chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
   
-  driver = webdriver.Chrome(options=chrome_options)
+  driver = create_web_driver()
 
   illegal_char_replacement_flag = False
   invalid_links = []
@@ -203,8 +193,8 @@ def download_videos(video_ids: List[str], format: Literal["mp3", "mp4"], downloa
         file.write(data)
 
   # Display download summary
-  print(f"[green]{len(video_ids) - len(invalid_links)} [white]videos downloaded successfully. [bright_red]{len(invalid_links)} [white]invalid links found.")
-  print(f"\n[bright_red]Invalid links: [white]", end="")
+  print(f"\n[green]{len(video_ids) - len(invalid_links)} [white]videos downloaded successfully. [bright_red]{len(invalid_links)} [white]invalid links found.")
+  "" if len(invalid_links) == 0 else print(f"\n[bright_red]Invalid links: [white]", end="")
   print(*invalid_links, sep=", ")
 
 
