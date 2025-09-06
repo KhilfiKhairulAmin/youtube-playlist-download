@@ -1,6 +1,4 @@
-selenium
 typer
-beautifulsoup4
+playwright
 requests
 pytest
-pytest-cov
