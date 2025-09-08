@@ -28,3 +28,5 @@ python app.py "path_to_html"
   - TODO: Implement handler for single video
 3. A download analytics feature where user can view their past downloads activity and then show them where the file is downloaded, when, etc. It's just like a data browser feature, but through CLI
   - I'm not sure about this yet since it seems to be a big feature overall
+
+COOL!
