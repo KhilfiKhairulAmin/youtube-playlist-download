@@ -30,3 +30,4 @@ python app.py "path_to_html"
   - I'm not sure about this yet since it seems to be a big feature overall
 
 COOL!
+BLOOM FILTER IS A WONDER!
